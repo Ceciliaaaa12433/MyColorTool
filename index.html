@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Retro Color Palette Generator</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/colorthief@2.3.2/dist/color-thief.umd.js"></script>
+</head>
+<body>
+    <div class="app-wrap">
+        <div class="app-container">
+            <!-- Left: Image Upload & Preview -->
+            <div class="panel panel--left">
+                <h2 class="panel-title">Retro Color Palette Generator</h2>
+                <p class="panel-subtitle">Upload Your Image</p>
+
+                <div class="upload-area" id="uploadArea">
+                    <div class="upload-content">
+                        <div class="upload-icon">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                                <polyline points="17 8 12 3 7 8"></polyline>
+                                <line x1="12" y1="3" x2="12" y2="15"></line>
+                            </svg>
+                        </div>
+                        <div class="upload-title">Click or Drag & Drop File</div>
+                        <div class="upload-subtitle">JPG / PNG / GIF</div>
+                    </div>
+                    <input type="file" id="fileInput" accept="image/*" style="display: none;">
+                </div>
+
+                <div class="main-content" id="mainContent" style="display: none;">
+                    <div class="preview-frame">
+                        <img id="previewImage" alt="Preview">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right: Controls & Palette -->
+            <div class="panel panel--right">
+                <h2 class="panel-title">Retro Color Palette Generator</h2>
+                <p class="panel-subtitle panel-subtitle--muted">色卡提取</p>
+
+                <div class="button-group">
+                    <button class="btn btn--extract" id="extractBtn">Extract Colors</button>
+                    <button class="btn btn--random" id="randomBtn" disabled>Randomize Hue</button>
+                    <button class="btn btn--reset" id="resetBtn" disabled>Reset</button>
+                </div>
+
+                <div class="palette-section">
+                    <h3 class="palette-heading">提取色板</h3>
+                    <div class="palette-container" id="paletteContainer">
+                        <div class="palette-placeholder">
+                            Click "Extract Colors" to analyze colors
+                        </div>
+                    </div>
+                </div>
+
+                <div class="log-section">
+                    <div class="log-title">System Log</div>
+                    <div class="system-log" id="systemLog" aria-live="polite"></div>
+                </div>
+            </div>
+        </div>
+
+        <footer class="status-bar" id="statusBar">
+            <span class="status-text">Be patient, for the world is broad and wide.</span>
+        </footer>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
