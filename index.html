@@ -51,6 +51,10 @@
                     <button class="btn btn--reset" id="resetBtn" disabled>Reset</button>
                 </div>
 
+                <div class="save-row">
+                    <button type="button" class="btn-save" id="saveBtn" disabled>保存当前颜色</button>
+                </div>
+
                 <div class="palette-section">
                     <h3 class="palette-heading">提取色板</h3>
                     <div class="palette-container" id="paletteContainer">
@@ -67,11 +71,20 @@
             </div>
         </div>
 
+        <section class="history-wall" aria-labelledby="historyWallTitle">
+            <header class="history-wall__header">
+                <h2 id="historyWallTitle" class="history-wall__title">历史配色墙</h2>
+                <p class="history-wall__hint">云端已保存的调色盘</p>
+            </header>
+            <div class="history-wall__grid" id="historyWallGrid"></div>
+        </section>
+
         <footer class="status-bar" id="statusBar">
             <span class="status-text">Be patient, for the world is broad and wide.</span>
         </footer>
     </div>
 
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="script.js"></script>
 </body>
 </html>

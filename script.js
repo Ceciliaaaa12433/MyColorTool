@@ -1,3 +1,16 @@
+const SUPABASE_URL = 'https://jqwlliuuerfojvrkerdi.supabase.co';
+const SUPABASE_ANON_KEY =
+    'sb_publishable_kuUS0ah0JM0heuD4uae2Rg_61T_2wFX';
+
+const supabaseClient = window.supabase.createClient(
+    SUPABASE_URL,
+    SUPABASE_ANON_KEY
+);
+
+const SAVE_BTN_DEFAULT = '保存当前颜色';
+const SAVE_BTN_SUCCESS = '保存成功！';
+const HISTORY_FETCH_LIMIT = 36;
+
 // DOM Elements
 const uploadArea = document.getElementById('uploadArea');
 const fileInput = document.getElementById('fileInput');
@@ -6,8 +19,10 @@ const previewImage = document.getElementById('previewImage');
 const extractBtn = document.getElementById('extractBtn');
 const randomBtn = document.getElementById('randomBtn');
 const resetBtn = document.getElementById('resetBtn');
+const saveBtn = document.getElementById('saveBtn');
 const paletteContainer = document.getElementById('paletteContainer');
 const systemLog = document.getElementById('systemLog');
+const historyWallGrid = document.getElementById('historyWallGrid');
 
 // State
 let originalImageData = null;
@@ -16,6 +31,7 @@ let originalColors = [];
 let currentHueOffset = 0;
 let colorThief = null;
 let lastLogLines = [];
+let saveSuccessTimer = null;
 
 // Initialize Color Thief
 if (typeof ColorThief !== 'undefined') {
@@ -39,8 +55,79 @@ function init() {
     extractBtn.addEventListener('click', extractPalette);
     randomBtn.addEventListener('click', randomizeHue);
     resetBtn.addEventListener('click', resetColors);
+    saveBtn.addEventListener('click', saveCurrentPalette);
+
+    if (historyWallGrid) {
+        historyWallGrid.addEventListener('click', onHistorySwatchClick);
+        historyWallGrid.addEventListener('keydown', onHistorySwatchKeydown);
+    }
 
     logLine('Ready.');
+    loadHistoryWall();
+}
+
+let toastHideTimer = null;
+
+function showCopyToast() {
+    let el = document.getElementById('copyToast');
+    if (!el) {
+        el = document.createElement('div');
+        el.id = 'copyToast';
+        el.className = 'toast';
+        el.setAttribute('role', 'status');
+        el.setAttribute('aria-live', 'polite');
+        document.body.appendChild(el);
+    }
+    el.textContent = '复制成功！';
+    el.classList.add('toast--visible');
+    if (toastHideTimer) clearTimeout(toastHideTimer);
+    toastHideTimer = setTimeout(() => {
+        el.classList.remove('toast--visible');
+        toastHideTimer = null;
+    }, 1600);
+}
+
+function onHistorySwatchClick(e) {
+    const el = e.target.closest('.history-card__swatch[data-hex]');
+    if (!el || el.classList.contains('history-card__swatch--empty')) return;
+    const hex = el.dataset.hex;
+    if (!hex) return;
+    copyHexToClipboard(hex);
+}
+
+function onHistorySwatchKeydown(e) {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    const el = e.target.closest('.history-card__swatch[data-hex]');
+    if (!el || el.classList.contains('history-card__swatch--empty')) return;
+    e.preventDefault();
+    copyHexToClipboard(el.dataset.hex);
+}
+
+function copyHexToClipboard(hex) {
+    navigator.clipboard.writeText(hex).then(
+        () => {
+            showCopyToast();
+            logLine(`History: copied ${hex}`);
+        },
+        (err) => {
+            console.error(err);
+            logLine('Copy failed.');
+        }
+    );
+}
+
+function setPaletteActionsEnabled(enabled) {
+    randomBtn.disabled = !enabled;
+    resetBtn.disabled = !enabled;
+    saveBtn.disabled = !enabled;
+}
+
+function resetSaveButtonLabel() {
+    if (saveSuccessTimer) {
+        clearTimeout(saveSuccessTimer);
+        saveSuccessTimer = null;
+    }
+    saveBtn.textContent = SAVE_BTN_DEFAULT;
 }
 
 // File Handling
@@ -88,9 +175,9 @@ function loadImage(file) {
             originalColors = [];
             currentHueOffset = 0;
             previewImage.style.filter = '';
-            randomBtn.disabled = true;
-            resetBtn.disabled = true;
-            
+            setPaletteActionsEnabled(false);
+            resetSaveButtonLabel();
+
             // Reset palette
             paletteContainer.innerHTML = '<div class="palette-placeholder">Click EXTRACT to analyze colors</div>';
             logLine(`Loaded image: ${file.name}`);
@@ -152,10 +239,10 @@ function extractPalette() {
 
         // Display palette
         displayPalette();
-        
+        resetSaveButtonLabel();
+
         // Enable buttons
-        randomBtn.disabled = false;
-        resetBtn.disabled = false;
+        setPaletteActionsEnabled(true);
         logLine(`Palette extracted: ${extractedColors.length} colors.`);
     } catch (error) {
         console.error('Error extracting palette:', error);
@@ -310,6 +397,7 @@ function randomizeHue() {
     });
     
     displayPalette();
+    resetSaveButtonLabel();
     logLine(`Hue shifted by ${currentHueOffset}deg.`);
 }
 
@@ -325,6 +413,7 @@ function resetColors() {
     extractedColors = JSON.parse(JSON.stringify(originalColors));
     
     displayPalette();
+    resetSaveButtonLabel();
     logLine('Reset to original palette.');
 }
 
@@ -379,6 +468,169 @@ function handleCopyHex(e) {
         console.error('Failed to copy:', err);
         logLine('Copy failed.');
     });
+}
+
+/**
+ * Persists the current palette to Supabase `saved_colors`.
+ * Expects a jsonb column `colors` storing an array of { r, g, b, hex, percentage }.
+ */
+async function saveCurrentPalette() {
+    if (extractedColors.length === 0) {
+        logLine('Nothing to save. Extract a palette first.');
+        return;
+    }
+
+    const colors = extractedColors.map(({ r, g, b, hex, percentage }) => ({
+        r,
+        g,
+        b,
+        hex,
+        percentage
+    }));
+
+    saveBtn.disabled = true;
+    try {
+        const { error } = await supabaseClient
+            .from('saved_colors')
+            .insert({ colors });
+        if (error) {
+            console.error(error);
+            logLine(`Save failed: ${error.message}`);
+            return;
+        }
+        logLine(`Saved ${colors.length} colors to the cloud.`);
+        await loadHistoryWall();
+        if (saveSuccessTimer) clearTimeout(saveSuccessTimer);
+        saveBtn.textContent = SAVE_BTN_SUCCESS;
+        saveSuccessTimer = setTimeout(() => {
+            saveBtn.textContent = SAVE_BTN_DEFAULT;
+            saveSuccessTimer = null;
+        }, 2000);
+    } catch (err) {
+        console.error(err);
+        logLine('Save failed (network or configuration).');
+    } finally {
+        saveBtn.disabled = false;
+    }
+}
+
+/**
+ * Supabase / PostgREST 返回的 `colors` 可能是 jsonb 数组，也可能是文本列里的 JSON 字符串。
+ */
+function normalizeColorsValue(raw) {
+    if (raw == null) return [];
+    if (Array.isArray(raw)) return raw;
+    if (typeof raw === 'string') {
+        try {
+            const parsed = JSON.parse(raw);
+            return Array.isArray(parsed) ? parsed : [];
+        } catch {
+            return [];
+        }
+    }
+    if (typeof raw === 'object' && (raw.hex || Number.isFinite(raw.r))) {
+        return [raw];
+    }
+    return [];
+}
+
+function colorEntryToHex(c) {
+    if (!c) return '#E0E4E8';
+    if (typeof c === 'string') {
+        const s = c.trim();
+        return s.startsWith('#') ? s : `#${s}`;
+    }
+    if (c.hex) return c.hex;
+    if (Number.isFinite(c.r))
+        return rgbToHex(c.r, c.g, c.b);
+    return '#CCCCCC';
+}
+
+function formatHistoryDate(iso) {
+    if (!iso) return '';
+    try {
+        const d = new Date(iso);
+        if (Number.isNaN(d.getTime())) return '';
+        return new Intl.DateTimeFormat('zh-CN', {
+            month: 'short',
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
+        }).format(d);
+    } catch {
+        return '';
+    }
+}
+
+function renderHistoryWall(rows) {
+    if (!historyWallGrid) return;
+    if (!rows || rows.length === 0) {
+        historyWallGrid.innerHTML =
+            '<p class="history-wall__empty">暂无历史配色，保存后即可在此汇聚。</p>';
+        return;
+    }
+
+    historyWallGrid.innerHTML = rows
+        .map((row) => {
+            const arr = normalizeColorsValue(row.colors);
+            const swatches = arr
+                .map((c) => {
+                    const hex = colorEntryToHex(c);
+                    const safeHex = String(hex).replace(/"/g, '');
+                    return `<span class="history-card__swatch" role="button" tabindex="0" data-hex="${safeHex}" style="background-color:${safeHex}" title="点击复制 ${safeHex}"></span>`;
+                })
+                .join('');
+            const dateStr = row.created_at
+                ? formatHistoryDate(row.created_at)
+                : '';
+            const idAttr =
+                row.id !== undefined && row.id !== null
+                    ? ` data-id="${String(row.id).replace(/"/g, '')}"`
+                    : '';
+            return `<article class="history-card"${idAttr}>
+                <div class="history-card__strip" role="group" aria-label="${arr.length} 种颜色，点击色块复制 Hex">${swatches || '<span class="history-card__swatch history-card__swatch--empty"></span>'}</div>
+                <div class="history-card__meta">
+                    <span class="history-card__count">${arr.length} 色</span>
+                    ${dateStr ? `<time class="history-card__time" datetime="${String(row.created_at).replace(/"/g, '')}">${dateStr}</time>` : ''}
+                </div>
+            </article>`;
+        })
+        .join('');
+}
+
+async function loadHistoryWall() {
+    if (!historyWallGrid) return;
+    historyWallGrid.innerHTML =
+        '<p class="history-wall__empty history-wall__empty--muted">加载中…</p>';
+    try {
+        let { data, error } = await supabaseClient
+            .from('saved_colors')
+            .select('*')
+            .order('created_at', { ascending: false })
+            .limit(HISTORY_FETCH_LIMIT);
+        console.log('读取到的数据:', data, error);
+        if (error) {
+            const retry = await supabaseClient
+                .from('saved_colors')
+                .select('*')
+                .limit(HISTORY_FETCH_LIMIT);
+            data = retry.data;
+            error = retry.error;
+            console.log('读取到的数据:', data, error);
+        }
+        if (error) {
+            console.error(error);
+            historyWallGrid.innerHTML =
+                '<p class="history-wall__empty history-wall__empty--error">暂时无法加载历史配色</p>';
+            logLine(`History: ${error.message}`);
+            return;
+        }
+        renderHistoryWall(data);
+    } catch (err) {
+        console.error(err);
+        historyWallGrid.innerHTML =
+            '<p class="history-wall__empty history-wall__empty--error">暂时无法加载历史配色</p>';
+    }
 }
 
 function logLine(message) {
